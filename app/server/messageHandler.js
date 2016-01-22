@@ -1,5 +1,6 @@
-var  connectedPeers = {};
-function onMessage(ws, message){
+var connectedPeers = {};
+
+function onMessage(ws, message) {
     var type = message.type;
     switch (type) {
         case "ICECandidate":
@@ -15,44 +16,97 @@ function onMessage(ws, message){
             onInit(ws, message.init);
             break;
         default:
-            throw new Error("invalid message type");
+            throw new Error("invalid message type got " + type);
     }
 }
 
-function onInit(ws, id){
+function onInit(ws, id) {
     console.log("init from peer:", id);
+
+    onJoin(id);
+
     ws.id = id;
     connectedPeers[id] = ws;
 }
 
-function onOffer(offer, destination, source){
-    console.log("offer from peer:", source, "to peer", destination);
-    connectedPeers[destination].send(JSON.stringify({
-        type:'offer',
-        offer:offer,
-        source:source,
-    }));
+function onJoin(newPeerId) {
+    for (var peerId in connectedPeers) {
+        if (connectedPeers.hasOwnProperty(peerId)) {
+            try {
+                connectedPeers[peerId].send(JSON.stringify({
+                    type: 'join',
+                    id: newPeerId
+                }));
+            } catch (e) {
+                console.log(e);
+                disconnectPeer(peerId);
+            }
+        }
+    }
 }
 
-function onAnswer(answer, destination, source){
+function onDisconnect(disconnectedPeerId) {
+    for (var peerId in connectedPeers) {
+        if (connectedPeers.hasOwnProperty(peerId)) {
+            try {
+                connectedPeers[peerId].send(JSON.stringify({
+                    type: 'disconnect',
+                    id: disconnectedPeerId
+                }));
+            } catch (e) {
+                console.log(e);
+                disconnectPeer(peerId);
+            }
+        }
+    }
+}
+
+function onOffer(offer, destination, source) {
+    console.log("offer from peer:", source, "to peer", destination);
+    try {
+        connectedPeers[destination].send(JSON.stringify({
+            type: 'offer',
+            offer: offer,
+            source: source
+        }));
+    } catch (e) {
+        disconnectPeer(destination);
+    }
+}
+
+function onAnswer(answer, destination, source) {
     console.log("answer from peer:", source, "to peer", destination);
     connectedPeers[destination].send(JSON.stringify({
         type: 'answer',
         answer: answer,
-        source: source,
+        source: source
     }));
 }
 
-function onICECandidate(ICECandidate, destination, source){
+function onICECandidate(ICECandidate, destination, source) {
     console.log("ICECandidate from peer:", source, "to peer", destination);
-    connectedPeers[destination].send(JSON.stringify({
-        type: 'ICECandidate',
-        ICECandidate: ICECandidate,
-        source: source,
-    }));
+    try {
+        connectedPeers[destination].send(JSON.stringify({
+            type: 'ICECandidate',
+            ICECandidate: ICECandidate,
+            source: source
+        }));
+    } catch (e) {
+        disconnectPeer(destination);
+    }
+}
+
+function disconnectPeer(id) {
+    if (connectedPeers.hasOwnProperty(id)) {
+        delete connectedPeers[id];
+        console.log(id, "has been disconnected");
+
+        onDisconnect(id);
+    }
 }
 
 module.exports = onMessage;
+module.exports.disconnectPeer = disconnectPeer;
 
-//exporting for unit tests only
+// Exporting for unit tests only
 module.exports._connectedPeers = connectedPeers;

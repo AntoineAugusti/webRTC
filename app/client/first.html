@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Web RTC Test</title>
+    <script src="signalingChannelFactory.js"></script>
+    <script src="first.js"></script>
+    <style>
+    #peers li {cursor: pointer;}
+    </style>
+    <script>
+        window.addEventListener("load", function() {
+            var received = document.getElementById('received');
+            var peers = document.getElementById("peers");
+            var textarea = document.getElementById('message');
+
+            var uid = Math.round(Math.random() * 100000);
+            document.getElementById('uid').appendChild(document.createTextNode(uid));
+
+            initCaller(
+                uid,
+                function(message) {
+                    var newText = document.createTextNode(message);
+                    received.appendChild(newText);
+                    var linebreak = document.createElement('br');
+                    received.appendChild(linebreak);
+                    received.appendChild(linebreak);
+                },
+                function(peerIds) {
+                    peers.innerHTML = "";
+                    for (var peerId in peerIds) {
+                        var li = document.createElement("li");
+                        li.attributes["data"] = peerId;
+                        li.onclick = function(evt) {
+                            var destination = evt.srcElement.attributes["data"];
+                            switchDestination(destination);
+                        };
+                        li.appendChild(document.createTextNode(peerId));
+                        peers.appendChild(li);
+                        switchDestination(peerId);
+                    }
+                }
+            );
+            document.getElementById("send").onclick = function() {
+                var message = textarea.value;
+                sendRTCMessage(message);
+                textarea.value = "";
+            };
+        }, false);
+        function switchDestination(destination) {
+            document.getElementById("destination").innerHTML = destination;
+            setDestination(destination);
+        }
+    </script>
+</head>
+<body>
+    <h2>Web RTC Test - 1st question</h2>
+    <p id="uid" style="font-weight:bold"></p>
+    <ul id="peers">
+    </ul>
+    <p>
+        Send message to: <span id="destination"></span>
+    </p>
+    <textarea id="message"></textarea>
+    <p id="received"></p>
+    <button id="send">Send message</button>
+</body>
+</html>
