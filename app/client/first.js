@@ -13,6 +13,7 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
     var channels = {};
     var destination = null;
     var currentRelay = null;
+    var knownPeers = null;
 
     function switchRelay(peerId) {
         if (peerId != currentRelay) {
@@ -170,14 +171,22 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
     }
 
     function dispatchPeersList(from) {
+        // Construct a list of peers I already know:
+        // - peers I'm already connected at
+        // - peers I'm going to try to connect to
+        var allPeers = Object.keys(channels).map(Number);
+        if (knownPeers != null) {
+            allPeers = arrayUnique(allPeers.concat(knownPeers));
+        }
         channels[from].send(JSON.stringify({
             type: 'peers',
-            peers: Object.keys(channels).map(Number)
+            peers: allPeers
         }));
     }
 
     function handleIncomingPeersList(peers) {
         console.log('got peers list', peers);
+        knownPeers = peers;
         if (peers.length > 0) {
             (function myLoop(current, max, peersList) {
                 setTimeout(function() {
@@ -190,6 +199,18 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
                 }, 1000)
             })(0, peers.length - 1, peers);
         }
+    }
+
+    function arrayUnique(array) {
+        var a = array.concat();
+        for (var i = 0; i < a.length; ++i) {
+            for (var j = i + 1; j < a.length; ++j) {
+                if (a[i] === a[j])
+                    a.splice(j--, 1);
+            }
+        }
+
+        return a;
     }
 
     function handleMessageWithDestination(msgObj) {
