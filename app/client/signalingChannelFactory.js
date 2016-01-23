@@ -36,13 +36,13 @@ function SignalingChannel(id) {
                 self.onAnswer(objMessage.answer, objMessage.source);
                 break;
             case "join":
-                self.onJoin(objMessage.id);
+                self.onJoin(objMessage.peers);
                 break;
             case "disconnect":
                 self.onDisconnect(objMessage.id);
                 break;
             default:
-                throw new Error("invalid message type got ", objMessage.type);
+                throw new Error("invalid message type got", objMessage.type);
         }
     }
 
@@ -87,8 +87,8 @@ function SignalingChannel(id) {
     };
 
     // Default handler, should be overwritten
-    this.onJoin = function(peer) {
-        console.log("join: ", peer);
+    this.onJoin = function(peers) {
+        console.log("join: ", peers);
     };
 
     // Default handler, should be overwritten

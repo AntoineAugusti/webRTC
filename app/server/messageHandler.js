@@ -23,26 +23,14 @@ function onMessage(ws, message) {
 function onInit(ws, id) {
     console.log("init from peer:", id);
 
-    onJoin(id);
+    // Send the new peer a list of connected peers
+    ws.send(JSON.stringify({
+        type: 'join',
+        peers: Object.keys(connectedPeers)
+    }));
 
     ws.id = id;
     connectedPeers[id] = ws;
-}
-
-function onJoin(newPeerId) {
-    for (var peerId in connectedPeers) {
-        if (connectedPeers.hasOwnProperty(peerId)) {
-            try {
-                connectedPeers[peerId].send(JSON.stringify({
-                    type: 'join',
-                    id: newPeerId
-                }));
-            } catch (e) {
-                console.log(e);
-                disconnectPeer(peerId);
-            }
-        }
-    }
 }
 
 function onDisconnect(disconnectedPeerId) {
@@ -62,7 +50,7 @@ function onDisconnect(disconnectedPeerId) {
 }
 
 function onOffer(offer, destination, source) {
-    console.log("offer from peer:", source, "to peer", destination);
+    console.log("offer from peer", source, "to peer", destination);
     try {
         connectedPeers[destination].send(JSON.stringify({
             type: 'offer',

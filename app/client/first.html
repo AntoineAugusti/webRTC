@@ -6,7 +6,8 @@
     <script src="signalingChannelFactory.js"></script>
     <script src="first.js"></script>
     <style>
-    #peers li {cursor: pointer;}
+        #uid {font-weight: bold;}
+        #peers li {cursor: pointer;}
     </style>
     <script>
         window.addEventListener("load", function() {
@@ -37,14 +38,16 @@
                         };
                         li.appendChild(document.createTextNode(peerId));
                         peers.appendChild(li);
-                        switchDestination(peerId);
                     }
+                    // Automatically select the last peer
+                    switchDestination(Object.keys(peerIds)[Object.keys(peerIds).length-1]);
                 }
             );
             document.getElementById("send").onclick = function() {
                 var message = textarea.value;
                 sendRTCMessage(message);
                 textarea.value = "";
+                textarea.focus();
             };
         }, false);
         function switchDestination(destination) {
@@ -54,9 +57,10 @@
     </script>
 </head>
 <body>
-    <h2>Web RTC Test - 1st question</h2>
-    <p id="uid" style="font-weight:bold"></p>
+    <h2>Web RTC Test - 1<sup>st</sup> question</h2>
+    <p id="uid"></p>
     <ul id="peers">
+        <li>You're alone for now</li>
     </ul>
     <p>
         Send message to: <span id="destination"></span>

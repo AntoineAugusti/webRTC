@@ -1,4 +1,4 @@
-function initCaller(uid, messageCallback, peerUpdateCallback) {
+function initCaller(uid, messageCallback, peersUpdateCallback) {
     var RTCSessionDescription = window.RTCSessionDescription || window.mozRTCSessionDescription;
     var RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
     var RTCIceCandidate = window.RTCIceCandidate || window.mozRTCIceCandidate;
@@ -14,14 +14,23 @@ function initCaller(uid, messageCallback, peerUpdateCallback) {
     var destination = null;
 
     function initCommunication() {
-        signalingChannel.onJoin = function(newPeerId) {
-            console.log("join: ", newPeerId);
-            startCommunication(newPeerId);
+        signalingChannel.onJoin = function(peers) {
+            console.log("join: ", peers);
+            if (peers.length > 0) {
+                (function myLoop(current, max, peersList) {
+                    setTimeout(function() {
+                        startCommunication(peersList[current]);
+                        if (current < max) {
+                            myLoop(current + 1, max, peersList);
+                        }
+                    }, 1000)
+                })(0, peers.length - 1, peers);
+            }
         };
         signalingChannel.onDisconnect = function(peerId) {
             console.log("disconnect: ", peerId);
             delete channels[peerId];
-            peerUpdateCallback(channels);
+            peersUpdateCallback(channels);
         };
         signalingChannel.onOffer = function(offer, source) {
             console.log('receive offer from ', source);
@@ -44,7 +53,7 @@ function initCaller(uid, messageCallback, peerUpdateCallback) {
             }]
         });
         pc.onicecandidate = function(evt) {
-            if (evt.candidate) { // empty candidate (wirth evt.candidate === null) are often generated
+            if (evt.candidate) { // empty candidate (with evt.candidate === null) are often generated
                 signalingChannel.sendICECandidate(evt.candidate, peerId);
             }
         };
@@ -57,7 +66,7 @@ function initCaller(uid, messageCallback, peerUpdateCallback) {
             console.log("channel received");
 
             channels[peerId] = receiveChannel;
-            peerUpdateCallback(channels);
+            peersUpdateCallback(channels);
 
             receiveChannel.onmessage = function(event) {
                 onRTCMessage(event.data);
@@ -78,7 +87,7 @@ function initCaller(uid, messageCallback, peerUpdateCallback) {
             }
         };
         signalingChannel.onAnswer = function(answer, source) {
-            console.log('receive answer from ', source);
+            console.log('receive answer from', source);
             pc.setRemoteDescription(new RTCSessionDescription(answer));
         };
         signalingChannel.onICECandidate = function(ICECandidate, source) {
@@ -91,14 +100,14 @@ function initCaller(uid, messageCallback, peerUpdateCallback) {
         });
         pc.createOffer(function(offer) {
             pc.setLocalDescription(offer);
-            console.log('send offer to ', peerId);
+            console.log('send offer to', peerId);
             signalingChannel.sendOffer(offer, peerId);
         }, function(e) {
             console.error(e);
         });
 
         channels[peerId] = _commChannel;
-        peerUpdateCallback(channels);
+        peersUpdateCallback(channels);
 
         _commChannel.onclose = function(evt) {
             console.log("dataChannel closed");
@@ -125,6 +134,8 @@ function initCaller(uid, messageCallback, peerUpdateCallback) {
                 type: 'msg',
                 message: msg
             }));
+        } else {
+            console.error(destination)
         }
     }
 
@@ -132,6 +143,8 @@ function initCaller(uid, messageCallback, peerUpdateCallback) {
         var messageObj = JSON.parse(msg);
         if (messageObj.type == "msg") {
             messageCallback(messageObj.message);
+        } else {
+            console.error(messageObj)
         }
     }
 

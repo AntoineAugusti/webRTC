@@ -6,8 +6,6 @@ var wss = new WebSocketServer({
 });
 
 wss.on('connection', function connection(ws) {
-    console.log('connection from a client');
-
     ws.on('message', function incoming(message) {
         var objMessage = JSON.parse(message);
         messageHandler(ws, objMessage);
