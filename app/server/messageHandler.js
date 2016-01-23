@@ -23,11 +23,14 @@ function onMessage(ws, message) {
 function onInit(ws, id) {
     console.log("init from peer:", id);
 
-    // Send the new peer a list of connected peers
-    ws.send(JSON.stringify({
-        type: 'join',
-        peers: Object.keys(connectedPeers)
-    }));
+    var peersList = Object.keys(connectedPeers);
+    if (peersList.length > 0) {
+        // Send to the new peer a random peer from the already connected peers
+        ws.send(JSON.stringify({
+            type: 'join',
+            peer: peersList[Math.floor(Math.random()*peersList.length)]
+        }));
+    }
 
     ws.id = id;
     connectedPeers[id] = ws;

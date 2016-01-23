@@ -12,20 +12,42 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
     };
     var channels = {};
     var destination = null;
+    var currentRelay = null;
 
-    function initCommunication() {
-        signalingChannel.onJoin = function(peers) {
-            console.log("join: ", peers);
-            if (peers.length > 0) {
-                (function myLoop(current, max, peersList) {
-                    setTimeout(function() {
-                        startCommunication(peersList[current]);
-                        if (current < max) {
-                            myLoop(current + 1, max, peersList);
-                        }
-                    }, 1000)
-                })(0, peers.length - 1, peers);
+    function switchRelay(peerId) {
+        if (peerId != currentRelay) {
+            console.log('setting RPC relay', peerId);
+            currentRelay = peerId;
+            signalingChannel.setCommunicationChannel(channels[peerId]);
+        }
+    }
+
+    /**
+     * Initiate a default RTC peer connection.
+     * @param int peerId
+     * @return RTCPeerConnection
+     */
+    function createBasicPeerConnection(peerId) {
+        var pc = new RTCPeerConnection(servers, {
+            optional: [{
+                DtlsSrtpKeyAgreement: true
+            }]
+        });
+        pc.onicecandidate = function(evt) {
+            if (evt.candidate) { // empty candidate (with evt.candidate === null) are often generated
+                signalingChannel.sendICECandidate(evt.candidate, peerId);
             }
+        };
+        return pc;
+    }
+
+    /**
+     * Start the communication by contacting the signaling server.
+     */
+    function initCommunication() {
+        signalingChannel.onJoin = function(peer) {
+            console.log("join: ", peer);
+            startCommunication(peer, true);
         };
         signalingChannel.onDisconnect = function(peerId) {
             console.log("disconnect: ", peerId);
@@ -34,6 +56,12 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         };
         signalingChannel.onOffer = function(offer, source) {
             console.log('receive offer from ', source);
+            // Got something not coming from the current relay? It must be
+            // the original signaling server
+            if (source != currentRelay) {
+                currentRelay = null;
+                signalingChannel.switchToWS();
+            }
             var peerConnection = createPeerConnection(source);
             peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
             peerConnection.createAnswer(function(answer) {
@@ -46,17 +74,13 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         };
     }
 
+    /**
+     * Create a RTC peer connection (callee side).
+     * @param int peerId
+     * @return RTCPeerConnection
+     */
     function createPeerConnection(peerId) {
-        var pc = new RTCPeerConnection(servers, {
-            optional: [{
-                DtlsSrtpKeyAgreement: true
-            }]
-        });
-        pc.onicecandidate = function(evt) {
-            if (evt.candidate) { // empty candidate (with evt.candidate === null) are often generated
-                signalingChannel.sendICECandidate(evt.candidate, peerId);
-            }
-        };
+        var pc = createBasicPeerConnection(peerId);
         signalingChannel.onICECandidate = function(ICECandidate, source) {
             console.log("receiving ICE candidate from ", source);
             pc.addIceCandidate(new RTCIceCandidate(ICECandidate));
@@ -75,17 +99,13 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         return pc;
     }
 
-    function startCommunication(peerId) {
-        var pc = new RTCPeerConnection(servers, {
-            optional: [{
-                DtlsSrtpKeyAgreement: true
-            }]
-        });
-        pc.onicecandidate = function(evt) {
-            if (evt.candidate) { // empty candidate (wirth evt.candidate === null) are often generated
-                signalingChannel.sendICECandidate(evt.candidate, peerId);
-            }
-        };
+    /**
+     * Initiate a RTC peer connection (caller side).
+     * @param int peerId
+     * @param bool shouldUseAsRelay If true, the peer would be used as a relay to establish RPC connections
+     */
+    function startCommunication(peerId, shouldUseAsRelay) {
+        var pc = createBasicPeerConnection(peerId);
         signalingChannel.onAnswer = function(answer, source) {
             console.log('receive answer from', source);
             pc.setRemoteDescription(new RTCSessionDescription(answer));
@@ -94,7 +114,7 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
             console.log("receiving ICE candidate from ", source);
             pc.addIceCandidate(new RTCIceCandidate(ICECandidate));
         };
-        //:warning the dataChannel must be opened BEFORE creating the offer.
+        // :warning the dataChannel must be opened BEFORE creating the offer.
         var _commChannel = pc.createDataChannel('communication', {
             reliable: false
         });
@@ -107,7 +127,6 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         });
 
         channels[peerId] = _commChannel;
-        peersUpdateCallback(channels);
 
         _commChannel.onclose = function(evt) {
             console.log("dataChannel closed");
@@ -117,6 +136,17 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         };
         _commChannel.onopen = function() {
             console.log("dataChannel opened");
+            peersUpdateCallback(channels);
+
+            if (shouldUseAsRelay) {
+                switchRelay(peerId);
+                // Ask for the list of peers
+                console.log('asking for the list of peers to', peerId);
+                channels[peerId].send(JSON.stringify({
+                    type: 'getPeersList',
+                    source: uid
+                }));
+            }
         };
         _commChannel.onmessage = function(message) {
             onRTCMessage(message.data);
@@ -139,12 +169,64 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         }
     }
 
-    function onRTCMessage(msg) {
-        var messageObj = JSON.parse(msg);
-        if (messageObj.type == "msg") {
-            messageCallback(messageObj.message);
+    function dispatchPeersList(from) {
+        channels[from].send(JSON.stringify({
+            type: 'peers',
+            peers: Object.keys(channels).map(Number)
+        }));
+    }
+
+    function handleIncomingPeersList(peers) {
+        console.log('got peers list', peers);
+        if (peers.length > 0) {
+            (function myLoop(current, max, peersList) {
+                setTimeout(function() {
+                    if (peersList[current] != uid) {
+                        startCommunication(peersList[current], false);
+                    }
+                    if (current < max) {
+                        myLoop(current + 1, max, peersList);
+                    }
+                }, 1000)
+            })(0, peers.length - 1, peers);
+        }
+    }
+
+    function handleMessageWithDestination(msgObj) {
+        // Message was not addressed to me, forward it
+        if (msgObj.destination != uid) {
+            // Say that the message was relayed by me
+            msgObj.relayedBy = uid;
+            // And send it to the final peer
+            channels[msgObj.destination].send(JSON.stringify(msgObj));
         } else {
-            console.error(messageObj)
+            // Message was addressed to me, handle it
+            // Prepare to answer through a peer
+            switchRelay(msgObj.relayedBy);
+            // And handle the message
+            signalingChannel.dispatchMessage(msgObj);
+        }
+    }
+
+    function onRTCMessage(msg) {
+        var msgObj = JSON.parse(msg);
+        console.log('received RTC message', msgObj);
+        if (msgObj.hasOwnProperty('destination')) {
+            handleMessageWithDestination(msgObj);
+        } else {
+            switch (msgObj.type) {
+                case "msg":
+                    messageCallback(msgObj.message);
+                    break;
+                case "getPeersList":
+                    dispatchPeersList(msgObj.source);
+                    break;
+                case "peers":
+                    handleIncomingPeersList(msgObj.peers);
+                    break;
+                default:
+                    console.error(msgObj);
+            }
         }
     }
 

@@ -2,48 +2,25 @@ function SignalingChannel(id) {
 
     var _ws;
     var self = this;
+    var _communicationChannel = null;
 
     function connectToTracker(url) {
         _ws = new WebSocket(url);
-        _ws.onopen = _onConnectionEstablished;
-        _ws.onclose = _onClose;
         _ws.onmessage = _onMessage;
-        _ws.onerror = _onError;
-    }
-
-    function _onConnectionEstablished() {
-        _sendMessage('init', id);
-    }
-
-    function _onClose() {
-        console.error(id, 'closed the connection');
-    }
-
-    function _onError(err) {
-        console.error("error:", err);
+        _ws.onopen = function _onConnectionEstablished() {
+            _sendMessage('init', id);
+        };
+        _ws.onclose = function _onClose() {
+            console.error(id, 'closed the connection');
+        };
+        _ws.onerror = function _onError(err) {
+            console.error("error:", err);
+        };
+        setCommunicationChannel(_ws);
     }
 
     function _onMessage(evt) {
-        var objMessage = JSON.parse(evt.data);
-        switch (objMessage.type) {
-            case "ICECandidate":
-                self.onICECandidate(objMessage.ICECandidate, objMessage.source);
-                break;
-            case "offer":
-                self.onOffer(objMessage.offer, objMessage.source);
-                break;
-            case "answer":
-                self.onAnswer(objMessage.answer, objMessage.source);
-                break;
-            case "join":
-                self.onJoin(objMessage.peers);
-                break;
-            case "disconnect":
-                self.onDisconnect(objMessage.id);
-                break;
-            default:
-                throw new Error("invalid message type got", objMessage.type);
-        }
+        dispatchMessage(JSON.parse(evt.data));
     }
 
     function _sendMessage(type, data, destination) {
@@ -51,7 +28,8 @@ function SignalingChannel(id) {
         message.type = type;
         message[type] = data;
         message.destination = destination;
-        _ws.send(JSON.stringify(message));
+        message.source = id;
+        _communicationChannel.send(JSON.stringify(message));
     }
 
     function sendICECandidate(ICECandidate, destination) {
@@ -66,10 +44,43 @@ function SignalingChannel(id) {
         _sendMessage("answer", answer, destination);
     }
 
+    function setCommunicationChannel(commChannel) {
+        _communicationChannel = commChannel;
+    }
+
+    function switchToWS() {
+        setCommunicationChannel(_ws);
+    }
+
+    function dispatchMessage(objMessage) {
+        switch (objMessage.type) {
+            case "ICECandidate":
+                self.onICECandidate(objMessage.ICECandidate, objMessage.source);
+                break;
+            case "offer":
+                self.onOffer(objMessage.offer, objMessage.source);
+                break;
+            case "answer":
+                self.onAnswer(objMessage.answer, objMessage.source);
+                break;
+            case "join":
+                self.onJoin(objMessage.peer);
+                break;
+            case "disconnect":
+                self.onDisconnect(objMessage.id);
+                break;
+            default:
+                throw new Error("invalid message type got", objMessage.type);
+        }
+    }
+
     this.connectToTracker = connectToTracker;
+    this.dispatchMessage = dispatchMessage;
+    this.sendAnswer = sendAnswer;
     this.sendICECandidate = sendICECandidate;
     this.sendOffer = sendOffer;
-    this.sendAnswer = sendAnswer;
+    this.setCommunicationChannel = setCommunicationChannel;
+    this.switchToWS = switchToWS;
 
     // Default handler, should be overwritten
     this.onOffer = function(offer, source) {
