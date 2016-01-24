@@ -28,6 +28,7 @@ function SignalingChannel(id) {
         message.type = type;
         message[type] = data;
         message.destination = destination;
+        // Tag the message as emitted from the signaling channel's ID
         message.source = id;
         _communicationChannel.send(JSON.stringify(message));
     }
@@ -44,21 +45,32 @@ function SignalingChannel(id) {
         _sendMessage("answer", answer, destination);
     }
 
+    /**
+     * Set the destination for the signaling server
+     * @param {[type]} commChannel
+     */
     function setCommunicationChannel(commChannel) {
         _communicationChannel = commChannel;
     }
 
+    /**
+     * Switch back to the original signaling server through WebSocket.
+     */
     function switchToWS() {
         setCommunicationChannel(_ws);
     }
 
+    /**
+     * Dispatch a message to the right handler according to its type
+     * @param Object objMessage
+     */
     function dispatchMessage(objMessage) {
         switch (objMessage.type) {
             case "ICECandidate":
                 self.onICECandidate(objMessage.ICECandidate, objMessage.source);
                 break;
             case "offer":
-                self.onOffer(objMessage.offer, objMessage.source);
+                self.onOffer(objMessage.offer, objMessage.source, objMessage.hasOwnProperty('relayedBy'));
                 break;
             case "answer":
                 self.onAnswer(objMessage.answer, objMessage.source);
@@ -83,8 +95,8 @@ function SignalingChannel(id) {
     this.switchToWS = switchToWS;
 
     // Default handler, should be overwritten
-    this.onOffer = function(offer, source) {
-        console.log("offer from peer:", source, ':', offer);
+    this.onOffer = function(offer, source, wasRelayed) {
+        console.log("offer from peer:", source, ':', offer, 'wasRelayed:', wasRelayed);
     };
 
     // Default handler, should be overwritten

@@ -6,11 +6,13 @@ var wss = new WebSocketServer({
 });
 
 wss.on('connection', function connection(ws) {
+    // Handle an incoming regular message
     ws.on('message', function incoming(message) {
         var objMessage = JSON.parse(message);
         messageHandler(ws, objMessage);
     });
 
+    // Handle the disconnect event
     ws.on('close', function() {
         messageHandler.disconnectPeer(ws.id);
     })

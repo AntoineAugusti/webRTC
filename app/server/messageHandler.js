@@ -1,5 +1,10 @@
 var connectedPeers = {};
 
+/**
+ * Dispatch an incoming message to the right handler according to its type.
+ * @param WebSocket ws
+ * @param Object message
+ */
 function onMessage(ws, message) {
     var type = message.type;
     switch (type) {
@@ -28,7 +33,7 @@ function onInit(ws, id) {
         // Send to the new peer a random peer from the already connected peers
         ws.send(JSON.stringify({
             type: 'join',
-            peer: peersList[Math.floor(Math.random()*peersList.length)]
+            peer: peersList[Math.floor(Math.random() * peersList.length)]
         }));
     }
 

@@ -15,6 +15,10 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
     var currentRelay = null;
     var knownPeers = null;
 
+    /**
+     * Use the given peer as a relay to establish RPC connections.
+     * @param int peerId
+     */
     function switchRelay(peerId) {
         if (peerId != currentRelay) {
             console.log('setting RPC relay', peerId);
@@ -55,11 +59,11 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
             delete channels[peerId];
             peersUpdateCallback(channels);
         };
-        signalingChannel.onOffer = function(offer, source) {
-            console.log('receive offer from ', source);
-            // Got something not coming from the current relay? It must be
-            // the original signaling server
-            if (source != currentRelay) {
+        signalingChannel.onOffer = function(offer, source, wasRelayed) {
+            console.log('receive offer from ', source, 'wasRelayed:', wasRelayed);
+            // Message was not relayed by another peer? It is coming
+            // from the original signaling server through websocket
+            if (!wasRelayed) {
                 currentRelay = null;
                 signalingChannel.switchToWS();
             }
@@ -154,10 +158,18 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         };
     }
 
-    function setDestination(dst) {
-        destination = dst;
+    /**
+     * Set the destination for a RTC message.
+     * @param int peerId
+     */
+    function setDestination(peerId) {
+        destination = peerId;
     }
 
+    /**
+     * Send a RTC message to the current destination set.
+     * @param  string msg Content of the message
+     */
     function sendRTCMessage(msg) {
         if (destination != null) {
             console.log('Sending msg', msg, 'to', destination);
@@ -170,10 +182,14 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         }
     }
 
+    /**
+     * Dispatch peers I know to a new peer
+     * @param int from The peer that initiated the request and is looking for a response
+     */
     function dispatchPeersList(from) {
         // Construct a list of peers I already know:
-        // - peers I'm already connected at
-        // - peers I'm going to try to connect to
+        // - peers I'm already connected at (channels)
+        // - peers I'm currently trying to connect to (knownPeers)
         var allPeers = Object.keys(channels).map(Number);
         if (knownPeers != null) {
             allPeers = arrayUnique(allPeers.concat(knownPeers));
@@ -184,9 +200,15 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         }));
     }
 
+    /**
+     * Handle an incoming list of peers. We're going to connect to each
+     * individual peer.
+     * @param array peers A list of peer IDs
+     */
     function handleIncomingPeersList(peers) {
         console.log('got peers list', peers);
         knownPeers = peers;
+        // Connect to every received peers
         if (peers.length > 0) {
             (function myLoop(current, max, peersList) {
                 setTimeout(function() {
@@ -201,6 +223,11 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         }
     }
 
+    /**
+     * Delete duplicate values in an array.
+     * @param array array
+     * @return array
+     */
     function arrayUnique(array) {
         var a = array.concat();
         for (var i = 0; i < a.length; ++i) {
@@ -209,10 +236,13 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
                     a.splice(j--, 1);
             }
         }
-
         return a;
     }
 
+    /**
+     * Handle an incoming RTC message where the destination attribute has been set
+     * @param  Object msgObj The RTC message
+     */
     function handleMessageWithDestination(msgObj) {
         // Message was not addressed to me, forward it
         if (msgObj.destination != uid) {
@@ -229,19 +259,27 @@ function initCaller(uid, messageCallback, peersUpdateCallback) {
         }
     }
 
+    /**
+     * Handle an incoming RTC message.
+     * @param string msg The RTC message as a JSON string
+     */
     function onRTCMessage(msg) {
         var msgObj = JSON.parse(msg);
         console.log('received RTC message', msgObj);
         if (msgObj.hasOwnProperty('destination')) {
             handleMessageWithDestination(msgObj);
         } else {
+            // Events that are not handled by the signaling server
             switch (msgObj.type) {
+                // A regular text message
                 case "msg":
                     messageCallback(msgObj.message);
                     break;
+                // Another peer asked for the list of peers I know
                 case "getPeersList":
                     dispatchPeersList(msgObj.source);
                     break;
+                // Got a list of peers I need to connect to
                 case "peers":
                     handleIncomingPeersList(msgObj.peers);
                     break;
