@@ -33,7 +33,7 @@ function onInit(ws, id) {
         // Send to the new peer a random peer from the already connected peers
         ws.send(JSON.stringify({
             type: 'join',
-            peer: peersList[Math.floor(Math.random() * peersList.length)]
+            peer: parseInt(peersList[Math.floor(Math.random() * peersList.length)])
         }));
     }
 

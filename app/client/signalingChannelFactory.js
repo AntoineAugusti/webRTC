@@ -47,7 +47,7 @@ function SignalingChannel(id) {
 
     /**
      * Set the destination for the signaling server
-     * @param {[type]} commChannel
+     * @param object commChannel
      */
     function setCommunicationChannel(commChannel) {
         _communicationChannel = commChannel;
